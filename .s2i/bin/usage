@@ -1,0 +1,10 @@
+#!/bin/bash -e
+# The usage script allows you to inform the user how to properly use your
+# image.
+
+
+# Execute the default S2I script
+source ${STI_SCRIPTS_PATH}/usage
+
+# You can write S2I scripts in any programming language, as long as the 
+# scripts are executable inside the builder image.

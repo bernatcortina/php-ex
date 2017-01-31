@@ -1,0 +1,11 @@
+#!/bin/bash -e
+# The save-artifacts script gathers all dependencies that can speed up 
+# the build processes that follow. These dependencies are gathered into 
+# a tar file and streamed to the standard output.
+
+
+# Execute the default S2I script
+source ${STI_SCRIPTS_PATH}/save-artifacts
+
+# You can write S2I scripts in any programming language, as long as the 
+# scripts are executable inside the builder image.

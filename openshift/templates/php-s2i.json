@@ -1,0 +1,338 @@
+{
+  "kind": "Template",
+  "apiVersion": "v1",
+  "metadata": {
+    "name": "php-example",
+    "annotations": {
+      "openshift.io/display-name": "PHP",
+      "description": "An example PHP S2I application. For more information about using this template, including OpenShift considerations, see https://github.com/openshift/php-ex/blob/master/README.md.",
+      "tags": "quickstart,php",
+      "iconClass": "icon-php"
+    }
+  },
+  "message": "The following service(s) have been created in your project: ${NAME}.\n\nFor more information about using this template, including OpenShift considerations, see https://github.com/openshift/php-ex/blob/master/README.md.",
+  "labels": {
+    "template": "php-example"
+  },
+  "objects": [{
+    "kind": "Service",
+    "apiVersion": "v1",
+    "metadata": {
+      "name": "${NAME}",
+      "annotations": {
+        "description": "Exposes and load balances the application pods"
+      }
+    },
+    "spec": {
+      "ports": [{
+        "name": "web",
+        "port": 8080,
+        "targetPort": 8080
+      }],
+      "selector": {
+        "name": "${NAME}"
+      }
+    }
+  }, {
+    "kind": "Route",
+    "apiVersion": "v1",
+    "metadata": {
+      "name": "${NAME}"
+    },
+    "spec": {
+      "host": "${APPLICATION_DOMAIN}",
+      "to": {
+        "kind": "Service",
+        "name": "${NAME}"
+      }
+    }
+  }, {
+    "kind": "ImageStream",
+    "apiVersion": "v1",
+    "metadata": {
+      "name": "${NAME}",
+      "annotations": {
+        "description": "Keeps track of changes in the application image"
+      }
+    }
+  }, {
+    "kind": "BuildConfig",
+    "apiVersion": "v1",
+    "metadata": {
+      "name": "${NAME}",
+      "annotations": {
+        "description": "Defines how to build the application"
+      }
+    },
+    "spec": {
+      "source": {
+        "type": "Git",
+        "git": {
+          "uri": "${SOURCE_REPOSITORY_URL}",
+          "ref": "${SOURCE_REPOSITORY_REF}"
+        },
+        "contextDir": "${CONTEXT_DIR}"
+      },
+      "strategy": {
+        "type": "Source",
+        "sourceStrategy": {
+          "from": {
+            "kind": "ImageStreamTag",
+            "namespace": "${NAMESPACE}",
+            "name": "php:7.0"
+          },
+          "env": [{
+            "name": "COMPOSER_MIRROR",
+            "value": "${COMPOSER_MIRROR}"
+          }]
+        }
+      },
+      "output": {
+        "to": {
+          "kind": "ImageStreamTag",
+          "name": "${NAME}:latest"
+        }
+      },
+      "triggers": [{
+        "type": "ImageChange"
+      }, {
+        "type": "ConfigChange"
+      }, {
+        "type": "GitHub",
+        "github": {
+          "secret": "${GITHUB_WEBHOOK_SECRET}"
+        }
+      }]
+    }
+  }, {
+    "kind": "DeploymentConfig",
+    "apiVersion": "v1",
+    "metadata": {
+      "name": "${NAME}",
+      "annotations": {
+        "description": "Defines how to deploy the application server"
+      }
+    },
+    "spec": {
+      "strategy": {
+        "type": "Rolling",
+        "recreateParams": {
+          "pre": {
+            "failurePolicy": "Retry",
+            "execNewPod": {
+              "command": [
+                "./migrate-database.sh"
+              ],
+              "containerName": "php-example"
+            }
+          }
+        }
+      },
+      "triggers": [{
+        "type": "ImageChange",
+        "imageChangeParams": {
+          "automatic": true,
+          "containerNames": [
+            "php-example"
+          ],
+          "from": {
+            "kind": "ImageStreamTag",
+            "name": "${NAME}:latest"
+          }
+        }
+      }, {
+        "type": "ConfigChange"
+      }],
+      "replicas": 1,
+      "selector": {
+        "name": "${NAME}"
+      },
+      "template": {
+        "metadata": {
+          "name": "${NAME}",
+          "labels": {
+            "name": "${NAME}"
+          }
+        },
+        "spec": {
+          "containers": [{
+            "name": "php-example",
+            "image": "${NAME}",
+            "ports": [{
+              "containerPort": 8080
+            }],
+            "readinessProbe": {
+              "timeoutSeconds": 3,
+              "initialDelaySeconds": 3,
+              "httpGet": {
+                "path": "/",
+                "port": 8080
+              }
+            },
+            "livenessProbe": {
+              "timeoutSeconds": 3,
+              "initialDelaySeconds": 30,
+              "httpGet": {
+                "path": "/",
+                "port": 8080
+              }
+            },
+            "env": [{
+              "name": "ERROR_REPORTING",
+              "value": "${ERROR_REPORTING}"
+            }, {
+              "name": "DISPLAY_ERRORS",
+              "value": "${DISPLAY_ERRORS}"
+            }, {
+              "name": "DISPLAY_STARTUP_ERRORS",
+              "value": "${DISPLAY_STARTUP_ERRORS}"
+            }, {
+              "name": "TRACK_ERRORS",
+              "value": "${TRACK_ERRORS}"
+            }, {
+              "name": "HTML_ERRORS",
+              "value": "${HTML_ERRORS}"
+            }, {
+              "name": "INCLUDE_PATH",
+              "value": "${INCLUDE_PATH}"
+            }, {
+              "name": "SESSION_PATH",
+              "value": "${SESSION_PATH}"
+            }, {
+              "name": "SHORT_OPEN_TAG",
+              "value": "${SHORT_OPEN_TAG}"
+            }, {
+              "name": "DOCUMENTROOT",
+              "value": "${DOCUMENTROOT}"
+            }, {
+              "name": "OPCACHE_MEMORY_CONSUMPTION",
+              "value": "${OPCACHE_MEMORY_CONSUMPTION}"
+            }, {
+              "name": "OPCACHE_REVALIDATE_FREQ",
+              "value": "${OPCACHE_REVALIDATE_FREQ}"
+            }, {
+              "name": "HTTPD_START_SERVERS",
+              "value": "${HTTPD_START_SERVERS}"
+            }],
+            "resources": {
+              "limits": {
+                "memory": "${MEMORY_LIMIT}"
+              }
+            }
+          }]
+        }
+      }
+    }
+  }],
+"parameters": [{
+    "name": "NAME",
+    "displayName": "Name",
+    "description": "The name assigned to all of the frontend objects defined in this template.",
+    "value": "php-example",
+    "required": true
+  }, {
+    "name": "NAMESPACE",
+    "displayName": "Namespace",
+    "description": "The OpenShift Namespace where the ImageStream resides.",
+    "required": true,
+    "value": "openshift"
+  }, {
+    "name": "SOURCE_REPOSITORY_URL",
+    "displayName": "Git Repository URL",
+    "description": "The URL of the repository with your application source code.",
+    "value": "https://github.com/openshift/php-ex.git",
+    "required": true
+  }, {
+    "name": "SOURCE_REPOSITORY_REF",
+    "displayName": "Git Reference",
+    "description": "Set this to a branch name, tag or other ref of your repository if you are not using the default branch.",
+    "value": ""
+  }, {
+    "name": "GITHUB_WEBHOOK_SECRET",
+    "displayName": "GitHub Webhook Secret",
+    "description": "A secret string used to configure the GitHub webhook.",
+    "generate": "expression",
+    "from": "[a-zA-Z0-9]{40}"
+  }, {
+    "name": "CONTEXT_DIR",
+    "displayName": "Context Directory",
+    "description": "Set this to the relative path to your project if it is not in the root of your repository.",
+    "value": ""
+  }, {
+    "name": "MEMORY_LIMIT",
+    "displayName": "Memory Limit",
+    "description": "Maximum amount of memory the PHP container can use.",
+    "value": "512Mi",
+    "required": true
+  }, {
+    "name": "APPLICATION_DOMAIN",
+    "displayName": "Application Hostname",
+    "description": "The exposed hostname that will route to the PHP service, if left blank a value will be defaulted.",
+    "value": ""
+  }, {
+    "name": "ERROR_REPORTING",
+    "displayName": "Error Reporting (php.ini)",
+    "description": "Informs PHP of which errors, warnings and notices you would like it to take action for.",
+    "value": "E_ALL & ~E_NOTICE"
+  }, {
+    "name": "DISPLAY_ERRORS",
+    "displayName": "Display Errors (php.ini)",
+    "description": "Controls whether or not and where PHP will output errors, notices and warnings.",
+    "value": "ON"
+  }, {
+    "name": "DISPLAY_STARTUP_ERRORS",
+    "displayName": "Display Startup Errors (php.ini)",
+    "description": "Cause display errors which occur during PHP's startup sequence to be handled separately from display errors.",
+    "value": "OFF"
+  }, {
+    "name": "TRACK_ERRORS",
+    "displayName": "Track Errors (php.ini)",
+    "description": "Store the last error/warning message in $php_errormsg (boolean).",
+    "value": "OFF"
+  }, {
+    "name": "HTML_ERRORS",
+    "displayName": "HTML Errors (php.ini)",
+    "description": "Link errors to documentation related to the error.",
+    "value": "ON"
+  }, {
+    "name": "INCLUDE_PATH",
+    "displayName": "Include Path (php.ini)",
+    "description": "Path for PHP source files.",
+    "value": ".:/opt/app-root/src:/opt/rh/rh-php70/root/usr/share/pear"
+  }, {
+    "name": "SESSION_PATH",
+    "displayName": "Session Path (php.ini)",
+    "description": "Location for session data files.",
+    "value": "/tmp/sessions"
+  }, {
+    "name": "SHORT_OPEN_TAG",
+    "displayName": "Short Open Tag (php.ini)",
+    "description": "Determines whether or not PHP will recognize code between <? and ?> tags.",
+    "value": "OFF"
+  }, {
+    "name": "DOCUMENTROOT",
+    "displayName": "Document Root (php.ini)",
+    "description": "Path that defines the DocumentRoot for your application (ie. /public).",
+    "value": "/"
+  }, {
+    "name": "OPCACHE_MEMORY_CONSUMPTION",
+    "displayName": "OPcache Memory Consumption (opcache.ini)",
+    "description": "The OPcache shared memory storage size.",
+    "value": "16M"
+  }, {
+    "name": "OPCACHE_REVALIDATE_FREQ",
+    "displayName": "OPcache Revalidation Frequency (opcache.ini)",
+    "description": "How often to check script timestamps for updates, in seconds. 0 will result in OPcache checking for updates on every request.",
+    "value": "2"
+  }, {
+    "name": "HTTPD_START_SERVERS",
+    "displayName": "HTTPD Start Servers (httpd.conf)",
+    "description": "The StartServers directive sets the number of child server processes created on startup.",
+    "value": "8"
+  }, {
+    "name": "COMPOSER_MIRROR",
+    "displayName": "Custom Composer Mirror URL",
+    "description": "Adds a custom composer repository mirror URL to composer configuration.",
+    "value": ""
+  }]
+}
