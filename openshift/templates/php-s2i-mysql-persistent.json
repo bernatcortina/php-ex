@@ -2,25 +2,36 @@
   "kind": "Template",
   "apiVersion": "v1",
   "metadata": {
-    "name": "php-example",
+    "name": "php-mysql-example",
     "annotations": {
-      "openshift.io/display-name": "PHP",
-      "description": "An example PHP S2I application. For more information about using this template, including OpenShift considerations, see https://github.com/openshift/php-ex/blob/master/README.md.",
+      "openshift.io/display-name": "PHP + MySQL (Persistent)",
+      "description": "An example PHP S2I application with a MySQL database. For more information about using this template, including OpenShift considerations, see https://github.com/openshift/php-ex/blob/master/README.md.",
       "tags": "quickstart,php",
       "iconClass": "icon-php"
     }
   },
-  "message": "The following service(s) have been created in your project: ${NAME}.\n\nFor more information about using this template, including OpenShift considerations, see https://github.com/openshift/php-ex/blob/master/README.md.",
+  "message": "The following service(s) have been created in your project: ${NAME}, ${DATABASE_SERVICE_NAME}.\n\nFor more information about using this template, including OpenShift considerations, see https://github.com/openshift/php-ex/blob/master/README.md.",
   "labels": {
-    "template": "php-example"
+    "template": "php-mysql-example"
   },
   "objects": [{
+    "kind": "Secret",
+    "apiVersion": "v1",
+    "metadata": {
+      "name": "${NAME}"
+    },
+    "stringData": {
+      "databaseUser": "${DATABASE_USER}",
+      "databasePassword": "${DATABASE_PASSWORD}"
+    }
+  }, {
     "kind": "Service",
     "apiVersion": "v1",
     "metadata": {
       "name": "${NAME}",
       "annotations": {
-        "description": "Exposes and load balances the application pods"
+        "description": "Exposes and load balances the application pods",
+        "service.alpha.openshift.io/dependencies": "[{\"name\": \"${DATABASE_SERVICE_NAME}\", \"kind\": \"Service\"}]"
       }
     },
     "spec": {
@@ -122,7 +133,7 @@
         "imageChangeParams": {
           "automatic": true,
           "containerNames": [
-            "php-example"
+            "php-mysql-example"
           ],
           "from": {
             "kind": "ImageStreamTag",
@@ -145,7 +156,7 @@
         },
         "spec": {
           "containers": [{
-            "name": "php-example",
+            "name": "php-mysql-example",
             "image": "${NAME}",
             "ports": [{
               "containerPort": 8080
@@ -167,6 +178,31 @@
               }
             },
             "env": [{
+              "name": "DATABASE_SERVICE_NAME",
+              "value": "${DATABASE_SERVICE_NAME}"
+            }, {
+              "name": "DATABASE_DRIVER",
+              "value": "${DATABASE_DRIVER}"
+            }, {
+              "name": "DATABASE_NAME",
+              "value": "${DATABASE_NAME}"
+            }, {
+              "name": "DATABASE_USER",
+              "valueFrom": {
+                "secretKeyRef": {
+                  "name": "${NAME}",
+                  "key": "databaseUser"
+                }
+              }
+            }, {
+              "name": "DATABASE_PASSWORD",
+              "valueFrom": {
+                "secretKeyRef": {
+                  "name": "${NAME}",
+                  "key": "databasePassword"
+                }
+              }
+            }, {
               "name": "ERROR_REPORTING",
               "value": "${ERROR_REPORTING}"
             }, {
@@ -212,12 +248,147 @@
         }
       }
     }
+  }, {
+    "kind": "PersistentVolumeClaim",
+    "apiVersion": "v1",
+    "metadata": {
+      "name": "${DATABASE_SERVICE_NAME}"
+    },
+    "spec": {
+      "accessModes": [
+        "ReadWriteOnce"
+      ],
+      "resources": {
+        "requests": {
+          "storage": "${VOLUME_CAPACITY}"
+        }
+      }
+    }
+  }, {
+    "kind": "Service",
+    "apiVersion": "v1",
+    "metadata": {
+      "name": "${DATABASE_SERVICE_NAME}",
+      "annotations": {
+        "description": "Exposes the database server"
+      }
+    },
+    "spec": {
+      "ports": [{
+        "name": "mysql",
+        "port": 3306,
+        "targetPort": 3306
+      }],
+      "selector": {
+        "name": "${DATABASE_SERVICE_NAME}"
+      }
+    }
+  }, {
+    "kind": "DeploymentConfig",
+    "apiVersion": "v1",
+    "metadata": {
+      "name": "${DATABASE_SERVICE_NAME}",
+      "annotations": {
+        "description": "Defines how to deploy the database"
+      }
+    },
+    "spec": {
+      "strategy": {
+        "type": "Recreate"
+      },
+      "triggers": [{
+        "type": "ImageChange",
+        "imageChangeParams": {
+          "automatic": true,
+          "containerNames": [
+            "mysql"
+          ],
+          "from": {
+            "kind": "ImageStreamTag",
+            "namespace": "${NAMESPACE}",
+            "name": "mysql:5.6"
+          }
+        }
+      }, {
+        "type": "ConfigChange"
+      }],
+      "replicas": 1,
+      "selector": {
+        "name": "${DATABASE_SERVICE_NAME}"
+      },
+      "template": {
+        "metadata": {
+          "name": "${DATABASE_SERVICE_NAME}",
+          "labels": {
+            "name": "${DATABASE_SERVICE_NAME}"
+          }
+        },
+        "spec": {
+          "volumes": [{
+            "name": "${DATABASE_SERVICE_NAME}-data",
+            "persistentVolumeClaim": {
+              "claimName": "${DATABASE_SERVICE_NAME}"
+            }
+          }],
+          "containers": [{
+            "name": "mysql",
+            "image": " ",
+            "ports": [{
+              "containerPort": 3306
+            }],
+            "volumeMounts": [{
+              "name": "${DATABASE_SERVICE_NAME}-data",
+              "mountPath": "/var/lib/mysql/data"
+            }],
+            "readinessProbe": {
+              "timeoutSeconds": 1,
+              "initialDelaySeconds": 5,
+              "exec": {
+                "command": ["/bin/sh", "-i", "-c", "MYSQL_PWD='${DATABASE_PASSWORD}' mysql -h 127.0.0.1 -u ${DATABASE_USER} -D ${DATABASE_NAME} -e 'SELECT 1'"]
+              }
+            },
+            "livenessProbe": {
+              "timeoutSeconds": 1,
+              "initialDelaySeconds": 30,
+              "tcpSocket": {
+                "port": 3306
+              }
+            },
+            "env": [{
+              "name": "MYSQL_USER",
+              "valueFrom": {
+                "secretKeyRef": {
+                  "name": "${NAME}",
+                  "key": "databaseUser"
+                }
+              }
+            }, {
+              "name": "MYSQL_PASSWORD",
+              "valueFrom": {
+                "secretKeyRef": {
+                  "name": "${NAME}",
+                  "key": "databasePassword"
+                }
+              }
+            }, {
+              "name": "MYSQL_DATABASE",
+              "value": "${DATABASE_NAME}"
+            }],
+            "resources": {
+              "limits": {
+                "memory": "${MEMORY_MYSQL_LIMIT}"
+              }
+            }
+          }]
+        }
+      }
+    }
   }],
   "parameters": [{
     "name": "NAME",
     "displayName": "Name",
     "description": "The name assigned to all of the frontend objects defined in this template.",
-    "value": "php-example",
+    "value": "php-mysql-example",
     "required": true
   }, {
     "name": "NAMESPACE",
@@ -254,10 +425,49 @@
     "value": "512Mi",
     "required": true
   }, {
+    "name": "MEMORY_MYSQL_LIMIT",
+    "displayName": "Memory Limit (MySQL)",
+    "description": "Maximum amount of memory the MySQL container can use.",
+    "required": true,
+    "value": "512Mi"
+  }, {
+    "name": "VOLUME_CAPACITY",
+    "displayName": "Volume Capacity",
+    "description": "Volume space available for data, e.g. 512Mi, 2Gi",
+    "required": true,
+    "value": "1Gi"
+  }, {
     "name": "APPLICATION_DOMAIN",
     "displayName": "Application Hostname",
     "description": "The exposed hostname that will route to the PHP service, if left blank a value will be defaulted.",
     "value": ""
+  }, {
+    "name": "DATABASE_SERVICE_NAME",
+    "displayName": "Database Service Name",
+    "required": true,
+    "value": "mysql"
+  }, {
+    "name": "DATABASE_DRIVER",
+    "displayName": "Database Driver",
+    "description": "PDO database driver.",
+    "required": true,
+    "value": "mysql"
+  }, {
+    "name": "DATABASE_NAME",
+    "displayName": "Database Name",
+    "description": "Name of your OpenShift database service.",
+    "required": true,
+    "value": "default"
+  }, {
+    "name": "DATABASE_USER",
+    "displayName": "Database User",
+    "required": true,
+    "value": "openshift"
+  }, {
+    "name": "DATABASE_PASSWORD",
+    "displayName": "Database Password",
+    "generate": "expression",
+    "from": "[a-zA-Z0-9]{16}"
   }, {
     "name": "ERROR_REPORTING",
     "displayName": "Error Reporting (php.ini)",
